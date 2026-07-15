@@ -13,21 +13,20 @@ st.set_page_config(
 # ===== CSS PERSONALIZADO =====
 st.markdown("""
 <style>
-/* TÍTULO PRINCIPAL */
 .main-title { 
-        font-size: 7.5rem !important;
-        font-weight: 900 !important;
-        background: linear-gradient(135deg, #1B5E20 0%, #2E7D32 40%, #43A047 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-align: center;
-        padding: 1.5rem 0;
-        letter-spacing: -2px;
-        text-shadow: 0 4px 20px rgba(46, 125, 50, 0.15);
-        line-height: 1.2;
+    font-size: 5.5rem !important;
+    font-weight: 900 !important;
+    background: linear-gradient(135deg, #1B5E20 0%, #2E7D32 40%, #43A047 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-align: center;
+    padding: 1.5rem 0;
+    letter-spacing: -2px;
+    text-shadow: 0 4px 20px rgba(46, 125, 50, 0.15);
+    line-height: 1.2;
 }
 .sub-title {
-     font-size: 1.30rem !important;  
+    font-size: 1.1rem !important;  
     font-weight: 700 !important;
     color: #2E7D32 !important;
     text-align: center !important;
@@ -38,9 +37,8 @@ st.markdown("""
     border-radius: 14px !important;
     border: 1px solid rgba(46, 125, 50, 0.1) !important;
     width: 90% !important;
-    max-width: 900% !important;
+    max-width: 900px !important;
     box-sizing: border-box !important;
-        
 }
 .login-box {
     background-color: #f8f9fa;
@@ -48,9 +46,7 @@ st.markdown("""
     border-radius: 10px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
-            
 .main-subheader strong { color: #1B5E20; font-weight: 600; }
-            
 .language-selector {
     text-align: center;
     margin-top: 10px;
@@ -126,7 +122,6 @@ st.markdown("""
 TRADUCOES = {
     'pt': {
         'titulo': '🌿 NutriVision',
-        'subtitulo': '🌿 NutriVision',
         'subtitulo': 'Plataforma One Health de Deteção Precoce da Anemia, Fome Oculta, Insegurança Alimentar<br>e Prevenção através de Intervenções Integradas nos Sistemas de Saúde e Agroalimentares',
         'login': 'Login',
         'usuario': 'Usuário',
@@ -181,21 +176,23 @@ USUARIOS = {
     "admin": {"senha": "123", "nome": "Administrador", "icone": "👨💼"}
 }
 
-# ===== IMPORTAR SUPABASE =====
+# ===== SUPABASE =====
 try:
-    from supabase_client import (
+    from supabase_config import (
+        supabase,
         SUPABASE_AVAILABLE,
         salvar_crianca_supabase,
         carregar_criancas_supabase
     )
-    if SUPABASE_AVAILABLE:
-        print("✅ Supabase conectado!")
+    print("✅ Supabase importado com sucesso!")
 except ImportError:
+    supabase = None
     SUPABASE_AVAILABLE = False
     def salvar_crianca_supabase(dados):
-        return False, "Supabase nao disponivel"
+        return False, "Modo offline - Supabase não disponível"
     def carregar_criancas_supabase():
         return False, []
+    print("⚠️ Modo offline - Supabase não disponível")
 
 # ===== SESSION STATE =====
 if 'logado' not in st.session_state:
@@ -345,7 +342,7 @@ def calcular_idade(data_nascimento):
     return 0
 
 # ============================================================
-# TELA DE LOGIN COM TRADUTOR
+# TELA DE LOGIN
 # ============================================================
 def tela_login():
     st.markdown(f'<h1 class="main-title">{t("titulo")}</h1>', unsafe_allow_html=True)
@@ -373,43 +370,45 @@ def tela_login():
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        with st.container():
-            st.markdown('<div class="language-selector">', unsafe_allow_html=True)
-            
-            st.markdown(f"### 🔐 {t('login')}")
-            
-            username = st.text_input(f"👤 {t('usuario')}", placeholder=f"Digite seu {t('usuario').lower()}", key="login_user")
-            password = st.text_input(f"🔑 {t('senha')}", type="password", placeholder=f"Digite sua {t('senha').lower()}", key="login_pass")
-            
-            if st.button(f"🚀 {t('entrar')}", use_container_width=True):
-                if username and password:
-                    if username in USUARIOS and USUARIOS[username]["senha"] == password:
-                        st.session_state.logado = True
-                        st.session_state.usuario = USUARIOS[username]["nome"]
-                        st.session_state.perfil = username
-                        st.session_state.icone = USUARIOS[username]["icone"]
-                        st.rerun()
-                    else:
-                        st.error("❌ Usuário ou senha inválidos!")
+        st.markdown('<div class="login-box">', unsafe_allow_html=True)
+        
+        st.markdown(f"### 🔐 {t('login')}")
+        
+        username = st.text_input(f"👤 {t('usuario')}", placeholder=f"Digite seu {t('usuario').lower()}", key="login_user")
+        password = st.text_input(f"🔑 {t('senha')}", type="password", placeholder=f"Digite sua {t('senha').lower()}", key="login_pass")
+        
+        if st.button(f"🚀 {t('entrar')}", use_container_width=True):
+            if username and password:
+                if username in USUARIOS and USUARIOS[username]["senha"] == password:
+                    st.session_state.logado = True
+                    st.session_state.usuario = USUARIOS[username]["nome"]
+                    st.session_state.perfil = username
+                    st.session_state.icone = USUARIOS[username]["icone"]
+                    st.rerun()
                 else:
-                    st.warning("⚠️ Preencha todos os campos!")
-            
-            st.markdown("---")
-            st.markdown(f"### 📋 {t('credenciais')}")
-            st.code("""
+                    st.error("❌ Usuário ou senha inválidos!")
+            else:
+                st.warning("⚠️ Preencha todos os campos!")
+        
+        st.markdown("---")
+        st.markdown(f"### 📋 {t('credenciais')}")
+        st.code("""
 enfermeiro / 123
 medico / 123
 nutricionista / 123
 agronomo / 123
 admin / 123
-            """)
-            
-            st.markdown('</div>', unsafe_allow_html=True)
+        """)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
-# FORMULÁRIO ENFERMEIRO COM SUPABASE
+# FORMULÁRIO ENFERMEIRO
 # ============================================================
 def formulario_enfermeiro():
+    submitted = False
+    data = {}
+    
     if SUPABASE_AVAILABLE:
         try:
             sucesso, dados = carregar_criancas_supabase()
@@ -442,7 +441,6 @@ def formulario_enfermeiro():
         st.session_state.idade_calculada = 0
     
     with st.form("triagem_form", clear_on_submit=False):
-        
         st.markdown('<div class="section-title">👶 DADOS DA CRIANÇA</div>', unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns(3)
@@ -903,4 +901,4 @@ def main():
             st.info("📋 Selecione uma opção no menu lateral")
 
 if __name__ == "__main__":
-    main()
+    main() 
