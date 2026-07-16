@@ -1,172 +1,44 @@
 # pages/enfermeiro.py
+# ===== PERFIL ENFERMEIRO - TRIAGEM NUTRICIONAL =====
+
 import streamlit as st
-import pandas as pd
 from datetime import datetime, timedelta
 import random
+import sys
+import os
 
-# ===== IMPORTAR SUPABASE =====
-try:
-    from supabase_client import SUPABASE_AVAILABLE, salvar_crianca_supabase, carregar_criancas_supabase
-except ImportError:
-    SUPABASE_AVAILABLE = False
-    def salvar_crianca_supabase(dados):
-        return False, "Supabase nao disponivel"
-    def carregar_criancas_supabase():
-        return False, []
+# Adicionar o diretório pai ao path para importar funções
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-# ========== CLASSE IA ==========
-class IAClassifier:
-    def __init__(self):
-        self.historico_predicoes = []
-    
-    def predict_anemia(self, data):
-        score = 0
-        fatores = []
-        confianca = 0.85 + random.uniform(-0.05, 0.05)
-        
-        if data['muac'] < 115:
-            score += 25
-            fatores.append("MUAC critico (<115mm)")
-        elif data['muac'] < 125:
-            score += 20
-            fatores.append("MUAC baixo (<125mm)")
-        elif data['muac'] < 135:
-            score += 10
-            fatores.append("MUAC limitrofe")
-        
-        if data['altura'] > 0 and data['peso'] > 0:
-            imc = data['peso'] / ((data['altura']/100) ** 2)
-            if imc < 14:
-                score += 20
-                fatores.append(f"IMC muito baixo ({imc:.1f})")
-            elif imc < 16:
-                score += 15
-                fatores.append(f"IMC baixo ({imc:.1f})")
-            elif imc < 18.5:
-                score += 8
-                fatores.append(f"IMC abaixo do normal ({imc:.1f})")
-        
-        if data['edema'] == "Presente":
-            score += 15
-            fatores.append("Edema presente")
-        
-        if data['perda_peso'] == "Sim":
-            score += 10
-            fatores.append("Perda de peso recente")
-        
-        dds = data.get('dds_calculado', 0)
-        if dds <= 2:
-            score += 25
-            fatores.append("DDS muito baixo")
-        elif dds <= 3:
-            score += 20
-            fatores.append("DDS baixo")
-        
-        if data['refeicoes_dia'] == "1":
-            score += 15
-            fatores.append("Apenas 1 refeicao/dia")
-        elif data['refeicoes_dia'] == "2":
-            score += 8
-            fatores.append("Apenas 2 refeicoes/dia")
-        
-        resultado = self._classificar(score)
-        return resultado, score, fatores[:5], min(0.99, confianca)
-    
-    def predict_fome_oculta(self, data):
-        score = 0
-        fatores = []
-        confianca = 0.85 + random.uniform(-0.05, 0.05)
-        
-        dds = data.get('dds_calculado', 0)
-        if dds <= 2:
-            score += 30
-            fatores.append("DDS muito baixo")
-        elif dds <= 3:
-            score += 20
-            fatores.append("DDS baixo")
-        
-        if data['cabelo'] == "Despigmentado fino e raro":
-            score += 15
-            fatores.append("Cabelo despigmentado")
-        elif data['cabelo'] == "Despigmentado":
-            score += 10
-            fatores.append("Cabelo despigmentado")
-        
-        if data['mucosa'] == "Muito Hipocoradas":
-            score += 15
-            fatores.append("Mucosas muito hipocoradas")
-        elif data['mucosa'] == "Hipocoradas":
-            score += 10
-            fatores.append("Mucosas hipocoradas")
-        
-        resultado = self._classificar(score)
-        return resultado, score, fatores[:5], min(0.99, confianca)
-    
-    def predict_inseguranca(self, data):
-        score = 0
-        fatores = []
-        confianca = 0.85 + random.uniform(-0.05, 0.05)
-        
-        dds = data.get('dds_calculado', 0)
-        if dds <= 2:
-            score += 25
-            fatores.append("DDS muito baixo")
-        
-        if data['refeicoes_dia'] == "1":
-            score += 20
-            fatores.append("Apenas 1 refeicao/dia")
-        elif data['refeicoes_dia'] == "2":
-            score += 10
-            fatores.append("Apenas 2 refeicoes/dia")
-        
-        if data['muac'] < 115:
-            score += 15
-            fatores.append("MUAC critico")
-        elif data['muac'] < 125:
-            score += 10
-            fatores.append("MUAC baixo")
-        
-        resultado = self._classificar(score)
-        return resultado, score, fatores[:5], min(0.99, confianca)
-    
-    def _classificar(self, score):
-        if score >= 50:
-            return "ALTO"
-        elif score >= 30:
-            return "MEDIO"
-        else:
-            return "BAIXO"
+from app import t, calcular_idade, IAClassifier, SUPABASE_AVAILABLE, salvar_crianca_supabase, carregar_criancas_supabase
 
-# ========== FUNÇÃO PARA CALCULAR IDADE ==========
-def calcular_idade(data_nascimento):
-    hoje = datetime.now().date()
-    if data_nascimento <= hoje:
-        meses = (hoje.year - data_nascimento.year) * 12 + (hoje.month - data_nascimento.month)
-        if hoje.day < data_nascimento.day:
-            meses -= 1
-        return max(0, meses)
-    return 0
-
-# ========== FUNÇÃO PRINCIPAL ==========
+# ============================================================
+# FORMULÁRIO ENFERMEIRO
+# ============================================================
 def render_enfermeiro():
-    st.title("👩🏾⚕️ Enfermeiro - Triagem Nutricional")
-    st.markdown("Avaliação de risco de anemia, fome oculta e insegurança alimentar")
+    submitted = False
+    data = {}
     
-    # ===== CARREGAR DADOS DO SUPABASE =====
-    if 'criancas' not in st.session_state:
-        if SUPABASE_AVAILABLE:
+    if SUPABASE_AVAILABLE:
+        try:
             sucesso, dados = carregar_criancas_supabase()
             if sucesso and dados:
                 st.session_state.criancas = dados
-                st.success(f"✅ {len(dados)} registos carregados do Supabase!")
+                st.success(f"✅ {len(dados)} {t('registos_carregados')}")
             else:
                 st.session_state.criancas = []
-                st.info("📋 Nenhum registo encontrado")
-        else:
+                st.info(t('nenhum_registo'))
+        except Exception as e:
+            st.error(f"❌ {t('erro_carregar')} {e}")
             st.session_state.criancas = []
-            st.warning("⚠️ Supabase não disponível")
+    else:
+        st.warning(t('supabase_indisponivel'))
+        st.session_state.criancas = []
     
-    if 'ia_classifier' not in st.session_state:
+    st.title(f"{st.session_state.icone} {t('triagem')}")
+    st.markdown(t('descricao_triagem'))
+    
+    if st.session_state.ia_classifier is None:
         st.session_state.ia_classifier = IAClassifier()
     
     if 'dados_basicos_salvos' not in st.session_state:
@@ -180,81 +52,100 @@ def render_enfermeiro():
     
     with st.form("triagem_form", clear_on_submit=False):
         
-        st.markdown("### 👶 DADOS DA CRIANÇA")
+        st.markdown(f'<div class="section-title">{t("dados_crianca")}</div>', unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            primeiro_nome = st.text_input("Primeiro Nome", placeholder="Ex: João")
+            primeiro_nome = st.text_input(t('primeiro_nome'), placeholder=t('ex_joao'))
         with col2:
-            nome_meio = st.text_input("Nome do Meio", placeholder="Ex: Manuel")
+            nome_meio = st.text_input(t('nome_meio'), placeholder=t('ex_manuel'))
         with col3:
-            ultimo_nome = st.text_input("Apelido", placeholder="Ex: Silva")
+            ultimo_nome = st.text_input(t('apelido'), placeholder=t('ex_silva'))
+        
         nome_completo = f"{primeiro_nome} {nome_meio} {ultimo_nome}".strip()
         
         col1, col2 = st.columns([3, 1])
         with col1:
-            data_nascimento = st.date_input("📅 Data de Nascimento", value=datetime.now() - timedelta(days=730), max_value=datetime.now())
+            data_nascimento = st.date_input(
+                t('data_nascimento'),
+                value=datetime.now() - timedelta(days=730),
+                max_value=datetime.now()
+            )
             idade_meses = calcular_idade(data_nascimento)
+        
         with col2:
-            if st.form_submit_button("💾 Salvar Dados", use_container_width=True):
+            st.write("")
+            st.write("")
+            if st.form_submit_button(t('salvar_dados'), use_container_width=True):
                 if nome_completo:
                     st.session_state.dados_basicos_salvos = True
                     st.session_state.nome_salvo = nome_completo
                     st.session_state.data_salva = data_nascimento
                     st.session_state.idade_calculada = idade_meses
-                    st.success(f"✅ {nome_completo} - {idade_meses} meses")
+                    st.success(f"✅ {nome_completo} - {idade_meses} {t('meses')}")
                     st.rerun()
                 else:
-                    st.warning("⚠️ Preencha o nome completo")
+                    st.warning(t('preencher_nome'))
         
         if not st.session_state.dados_basicos_salvos:
-            st.warning("⚠️ Clique em 'Salvar Dados' para continuar.")
+            st.warning(t('clicar_salvar_dados'))
             st.stop()
         
         nome_completo = st.session_state.nome_salvo
         data_nascimento = st.session_state.data_salva
         idade_meses = st.session_state.idade_calculada
         
-        st.info(f"👶 {nome_completo} - {idade_meses} meses")
+        st.info(f"👶 {nome_completo} - {idade_meses} {t('meses')}")
         st.divider()
         
-        st.markdown("### 📍 LOCALIZAÇÃO")
+        st.markdown(f"### {t('localizacao')}")
+        
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            provincia = st.selectbox("Província", ["Cabo Delgado", "Gaza", "Inhambane", "Manica", "Maputo Cidade", "Maputo Província", "Nampula", "Niassa", "Sofala", "Tete", "Zambézia"])
+            provincia = st.selectbox(
+                t('provincia'),
+                ["Cabo Delgado", "Gaza", "Inhambane", "Manica", "Maputo Cidade", 
+                 "Maputo Província", "Nampula", "Niassa", "Sofala", "Tete", "Zambézia"]
+            )
         with col2:
-            distrito = st.text_input("Distrito")
+            distrito = st.text_input(t('distrito'))
         with col3:
-            residencia = st.text_input("Local de Residência")
+            residencia = st.text_input(t('residencia'))
         with col4:
-            hospital = st.text_input("Hospital/Unidade Sanitária")
+            hospital = st.text_input(t('hospital'))
+        
         st.divider()
         
-        st.markdown("### 👩 DADOS DA MÃE")
+        st.markdown(f'<div class="section-title">{t("dados_mae")}</div>', unsafe_allow_html=True)
+        
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            nome_mae = st.text_input("Nome da Mãe", placeholder="Ex: Maria")
+            nome_mae = st.text_input(t('nome_mae'), placeholder=t('ex_maria'))
         with col2:
-            idade_mae = st.number_input("Idade da Mãe (anos)", 12, 60, 25)
+            idade_mae = st.number_input(t('idade_mae'), 12, 60, 25)
         with col3:
-            escolaridade_mae = st.selectbox("Escolaridade da Mãe", ["Nenhum", "Ensino Primário", "Ensino Secundário", "Ensino Superior"])
+            escolaridade_mae = st.selectbox(t('escolaridade_mae'), 
+                ["Nenhum", t('ensino_primario'), t('ensino_secundario'), t('ensino_superior')])
         with col4:
-            ocupacao_mae = st.text_input("Ocupação da Mãe")
+            ocupacao_mae = st.text_input(t('ocupacao_mae'))
+        
         col1, col2 = st.columns(2)
         with col1:
-            agregado_familiar_mae = st.number_input("Nº de Pessoas no Agregado", 1, 20, 5)
+            agregado_familiar_mae = st.number_input(t('agregado_familiar'), 1, 20, 5)
         with col2:
-            rendimento_familiar_mae = st.number_input("Rendimento Familiar (MZN)", 0, 100000, 5000)
+            rendimento_familiar_mae = st.number_input(t('rendimento_familiar'), 0, 100000, 5000)
+        
         st.divider()
         
-        st.markdown("### 📏 AVALIAÇÃO ANTROPOMÉTRICA")
+        st.markdown(f'<div class="section-title">{t("avaliacao_antropometrica")}</div>', unsafe_allow_html=True)
+        
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            peso = st.number_input("Peso (kg)", 0.0, 50.0, 10.0, 0.1)
+            peso = st.number_input(t('peso_kg'), 0.0, 50.0, 10.0, 0.1)
         with col2:
-            altura = st.number_input("Altura (cm)", 0.0, 120.0, 85.0, 0.1)
+            altura = st.number_input(t('altura_cm'), 0.0, 120.0, 85.0, 0.1)
         with col3:
-            muac = st.number_input("MUAC (mm)", 0, 200, 130)
+            muac = st.number_input(t('muac_mm'), 0, 200, 130)
         with col4:
             if altura > 0 and peso > 0:
                 imc = peso / ((altura/100) ** 2)
@@ -262,71 +153,96 @@ def render_enfermeiro():
         
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            edema = st.radio("Edema", ["Ausente", "Presente"], horizontal=True)
+            edema = st.radio(t('edema'), [t('ausente'), t('presente')], horizontal=True)
         with col2:
-            perda_peso = st.selectbox("Perda de peso", ["Não", "Sim"])
+            perda_peso = st.selectbox(t('perda_peso'), [t('nao'), t('sim')])
         with col3:
-            apatia = st.selectbox("Apatia", ["Não", "Sim"])
+            apatia = st.selectbox(t('apatia'), [t('nao'), t('sim')])
         with col4:
-            febre = st.selectbox("Febre", ["Não", "Sim"])
+            febre = st.selectbox(t('febre'), [t('nao'), t('sim')])
         
-        diarreia = st.selectbox("💧 Diarreia (últimas 2 semanas)", ["Não", "Sim, 1-3 dias", "Sim, 4-7 dias", "Sim, mais de 7 dias"])
-        doenca_cronica = st.selectbox("🏥 Doença Crónica", ["Nenhuma", "HIV/SIDA", "Tuberculose", "Doença Cardíaca", "Doença Renal", "Diabetes", "Asma", "Desnutrição Crónica", "Outra"])
-        if doenca_cronica == "Outra":
-            doenca_especificar = st.text_input("Especifique a doença:")
+        diarreia = st.selectbox(
+            t('diarreia'),
+            [t('nao'), t('sim_1_3_dias'), t('sim_4_7_dias'), t('sim_mais_7_dias')]
+        )
+        
+        doenca_cronica = st.selectbox(
+            t('doenca_cronica'),
+            [t('nenhuma'), "HIV/SIDA", "Tuberculose", t('doenca_cardiaca'), 
+             t('doenca_renal'), "Diabetes", "Asma", t('desnutricao_cronica'), t('outra')]
+        )
+        
+        if doenca_cronica == t('outra'):
+            doenca_especificar = st.text_input(t('especificar_doenca'))
         else:
             doenca_especificar = ""
+        
         st.divider()
         
-        st.markdown("### 💇 AVALIAÇÃO FÍSICA")
+        st.markdown(f'<div class="section-title">{t("avaliacao_fisica")}</div>', unsafe_allow_html=True)
+
         col1, col2 = st.columns(2)
         with col1:
-            cabelo = st.selectbox("Cabelo", ["Pigmentado e abundante", "Pigmentado e fino", "Despigmentado", "Despigmentado fino e raro"])
+            cabelo = st.selectbox(
+                t('cabelo'),
+                [t('pigmentado_abundante'), t('pigmentado_fino'), t('despigmentado'), t('despigmentado_fino_raro')]
+            )
         with col2:
-            mucosa = st.selectbox("Mucosas", ["Coradas", "Hipocoradas", "Muito Hipocoradas"])
+            mucosa = st.selectbox(
+                t('mucosas'),
+                [t('coradas'), t('hipocoradas'), t('muito_hipocoradas')]
+            )
+        
         st.divider()
         
-        st.markdown("### 💊 SUPLEMENTAÇÃO")
+        st.markdown(f'<div class="section-title">{t("suplementacao")}</div>', unsafe_allow_html=True)
+        
         col1, col2, col3 = st.columns(3)
         with col1:
-            suplementacao_ferro = st.selectbox("Suplementação de Ferro", ["Não", "Sim", "Em curso"])
+            suplementacao_ferro = st.selectbox(t('suplementacao_ferro'), [t('nao'), t('sim'), t('em_curso')])
         with col2:
-            suplementacao_vit_a = st.selectbox("Suplementação Vitamina A", ["Não", "Sim", "Em curso"])
+            suplementacao_vit_a = st.selectbox(t('suplementacao_vit_a'), [t('nao'), t('sim'), t('em_curso')])
         with col3:
-            desparasitacao = st.selectbox("Desparasitação", ["Não", "Sim", "Não sabe"])
+            desparasitacao = st.selectbox(t('desparasitacao'), [t('nao'), t('sim'), t('nao_sabe')])
+        
         st.divider()
         
-        st.markdown("### 🍽️ HISTÓRICO ALIMENTAR")
+        st.markdown(f'<div class="section-title">{t("historico_alimentar")}</div>', unsafe_allow_html=True)
+        
         col1, col2, col3 = st.columns(3)
         with col1:
             if idade_meses > 24:
-                amamentacao = "Não"
+                amamentacao = t('nao')
                 meses_amamentacao = 0
-                st.info("🚫 Amamentação desativada (>24 meses)")
+                st.info(t('amamentacao_desativada'))
             else:
-                amamentacao = st.selectbox("Amamentação", ["Não", "Sim"])
-                if amamentacao == "Sim":
-                    meses_amamentacao = st.number_input("Meses amamentação exclusiva", 0, 24, 6)
+                amamentacao = st.selectbox(t('amamentacao'), [t('nao'), t('sim')])
+                if amamentacao == t('sim'):
+                    meses_amamentacao = st.number_input(t('meses_amamentacao'), 0, 24, 6)
                 else:
                     meses_amamentacao = 0
         with col2:
-            refeicoes_dia = st.selectbox("Refeições por dia", ["1", "2", "3", "4", "5+"])
+            refeicoes_dia = st.selectbox(t('refeicoes_dia'), ["1", "2", "3", "4", "5+"])
         with col3:
-            dds_score = st.slider("Diversidade Alimentar (DDS)", 0, 9, 5)
+            dds_score = st.slider(t('diversidade_alimentar'), 0, 9, 5)
+        
         st.divider()
         
-        st.markdown("### 🥗 ALIMENTOS CONSUMIDOS")
+        st.markdown(f'<div class="section-title">{t("alimentos_consumidos")}</div>', unsafe_allow_html=True)
+        
         alimentos = {
-            "Frutas": ["Banana", "Manga", "Laranja", "Goiaba"],
-            "Carnes": ["Carne bovina", "Carne de frango", "Carne de cabra"],
-            "Peixe": ["Peixe fresco", "Peixe seco"],
-            "Ovos": ["Ovo de galinha"],
-            "Leguminosas": ["Feijão", "Amendoim"],
-            "Cereais": ["Milho", "Arroz", "Mandioca"],
-            "Verduras": ["Espinafre", "Couve", "Cenoura"]
+            t('frutas'): ["Banana", "Manga", "Laranja", "Goiaba"],
+            t('carnes'): [t('carne_bovina'), t('carne_frango'), t('carne_cabra')],
+            t('peixe'): [t('peixe_fresco'), t('peixe_seco')],
+            t('ovos'): [t('ovo_galinha')],
+            t('leguminosas'): ["Feijão", "Amendoim"],
+            t('cereais'): ["Milho", "Arroz", "Mandioca"],
+            t('verduras'): ["Espinafre", "Couve", "Cenoura"]
         }
+
         selecionados = []
         col1, col2, col3 = st.columns(3)
+        
         for idx, (categoria, items) in enumerate(alimentos.items()):
             col = [col1, col2, col3][idx % 3]
             with col:
@@ -344,60 +260,59 @@ def render_enfermeiro():
                     break
         dds_calculado = min(9, grupos)
         
-        # ===== PRODUÇÃO AGRÍCOLA =====
-        st.markdown("### 🌾 PRODUÇÃO AGRÍCOLA")
-        
+        st.markdown(f'<div class="section-title">{t("producao_agricola")}</div>', unsafe_allow_html=True)
+
         col1, col2 = st.columns(2)
         with col1:
             producao_familiar = st.selectbox(
-                "1. A família produz alimentos?",
-                ["Produz para consumo", "Produz para venda", "Produz para consumo e venda", "Não produz"],
+                t('producao_familiar'),
+                [t('produz_consumo'), t('produz_venda'), t('produz_consumo_venda'), t('nao_produz')],
                 key="producao_familiar"
             )
         with col2:
             acesso_terra = st.selectbox(
-                "2. A família tem acesso à terra?",
-                ["Tem terra própria", "Tem terra comunitária", "Tem terra arrendada", "Não tem terra"],
+                t('acesso_terra'),
+                [t('terra_propria'), t('terra_comunitaria'), t('terra_arrendada'), t('nao_tem_terra')],
                 key="acesso_terra"
             )
-        
+
         col1, col2 = st.columns(2)
         with col1:
             culturas_produzidas = st.selectbox(
-                "3. Principais culturas produzidas:",
+                t('culturas_produzidas'),
                 ["Milho", "Feijão", "Mandioca", "Amendoim", "Batata Doce", 
-                 "Hortaliças", "Frutas", "Arroz", "Cana-de-Açúcar", "Outra"],
+                 "Hortaliças", "Frutas", "Arroz", "Cana-de-Açúcar", t('outra')],
                 key="culturas_produzidas"
             )
-            if culturas_produzidas == "Outra":
-                outras_culturas = st.text_input("Especifique outras culturas:", key="outras_culturas")
+            if culturas_produzidas == t('outra'):
+                outras_culturas = st.text_input(t('especificar_culturas'), key="outras_culturas")
             else:
                 outras_culturas = ""
         with col2:
             fonte_agua = st.selectbox(
-                "4. Fonte de água para produção:",
-                ["Rio", "Poço", "Furo", "Lago", "Nascente", "Água da chuva", "Sistema de irrigação", "Nenhuma"],
+                t('fonte_agua'),
+                ["Rio", "Poço", "Furo", "Lago", "Nascente", t('agua_chuva'), t('sistema_irrigacao'), t('nenhuma')],
                 key="fonte_agua"
             )
-        
+
         dificuldades = st.selectbox(
-            "5. Principais dificuldades na produção:",
-            ["Falta de sementes", "Falta de fertilizantes/adubo", "Solo pouco fértil", 
-             "Pragas e doenças", "Falta de chuva/seca", "Cheias/excesso de chuva", 
-             "Falta de conhecimento técnico", "Falta de mão de obra", 
-             "Falta de equipamento agrícola", "Nenhuma dificuldade"],
+            t('dificuldades_producao'),
+            [t('falta_sementes'), t('falta_fertilizantes'), t('solo_pouco_fertil'), 
+             t('pragas_doencas'), t('falta_chuva_seca'), t('cheias_excesso_chuva'), 
+             t('falta_conhecimento_tecnico'), t('falta_mao_obra'), 
+             t('falta_equipamento_agricola'), t('nenhuma_dificuldade')],
             key="dificuldades"
         )
-        
+
         st.divider()
         
-        submitted = st.form_submit_button("🧮 Calcular Risco", use_container_width=True)
+        submitted = st.form_submit_button(t('calcular_risco'), use_container_width=True)
     
     if submitted:
         if idade_meses >= 60:
-            st.error("❌ Criança com 5 anos ou mais!")
+            st.error(t('crianca_5_anos'))
         elif not nome_completo:
-            st.error("❌ Preencha o nome completo")
+            st.error(t('preencher_nome'))
         else:
             data = {
                 'nome_completo': nome_completo,
@@ -422,7 +337,7 @@ def render_enfermeiro():
                 'febre': febre,
                 'diarreia': diarreia,
                 'doenca_cronica': doenca_cronica,
-                'doenca_especificar': doenca_especificar,
+                'doenca_cronica_especificar': doenca_especificar,
                 'cabelo': cabelo,
                 'mucosa': mucosa,
                 'suplementacao_ferro': suplementacao_ferro,
@@ -430,77 +345,143 @@ def render_enfermeiro():
                 'desparasitacao': desparasitacao,
                 'amamentacao': amamentacao,
                 'meses_amamentacao': meses_amamentacao,
-                'refeicoes_dia': refeicoes_dia,
+                'refeicoes_dia': refeicoes_dia, 
                 'dds_score': dds_score,
                 'dds_calculado': dds_calculado,
                 'producao_familiar': producao_familiar,
                 'acesso_terra': acesso_terra,
-                'culturas_produzidas': outras_culturas if culturas_produzidas == "Outra" else culturas_produzidas,
+                'culturas_produzidas': outras_culturas if culturas_produzidas == t('outra') else culturas_produzidas,
                 'fonte_agua': fonte_agua,
                 'dificuldades_producao': dificuldades,
                 'data_registo': datetime.now().strftime('%Y-%m-%d %H:%M')
             }
             
             ia = st.session_state.ia_classifier
+            
             risco_anemia, score_anemia, fatores_anemia, conf_anemia = ia.predict_anemia(data)
             risco_fome, score_fome, fatores_fome, conf_fome = ia.predict_fome_oculta(data)
             risco_inseg, score_inseg, fatores_inseg, conf_inseg = ia.predict_inseguranca(data)
+            
+            data.update({
+                'risco_anemia_nivel': risco_anemia,
+                'risco_anemia_score': score_anemia,
+                'risco_fome_nivel': risco_fome,
+                'risco_fome_score': score_fome,
+                'risco_inseguranca_nivel': risco_inseg,
+                'risco_inseguranca_score': score_inseg,
+            })
             
             if SUPABASE_AVAILABLE:
                 try:
                     sucesso, resultado = salvar_crianca_supabase(data)
                     if sucesso:
                         st.session_state.criancas.append(data)
-                        st.success(f"✅ {nome_completo} registado no Supabase!")
-                        if risco_anemia == "ALTO" or risco_fome == "ALTO" or risco_inseg == "ALTO":
-                            st.markdown("""
-                            <div style="background:#ffebee;border:3px solid #c62828;border-radius:15px;padding:20px;margin:10px 0;">
-                                <h2 style="color:#c62828;text-align:center;">🚨 ALTO RISCO DETETADO!</h2>
-                                <p style="color:#b71c1c;text-align:center;font-weight:bold;font-size:1.1rem;">✅ Gravado no Supabase e encaminhado ao médico!</p>
-                            </div>
-                            """, unsafe_allow_html=True)
+                        st.success(f"✅ {nome_completo} {t('registado_supabase')}")
                     else:
-                        st.warning(f"⚠️ Erro ao salvar: {resultado}")
+                        st.warning(f"⚠️ {t('erro_salvar')} {resultado}")
                         st.session_state.criancas.append(data)
-                        st.success(f"✅ {nome_completo} registado localmente!")
-                except:
+                        st.success(f"✅ {nome_completo} {t('registado_local')}")
+                except Exception as e:
                     st.session_state.criancas.append(data)
-                    st.success(f"✅ {nome_completo} registado localmente!")
+                    st.success(f"✅ {nome_completo} {t('registado_local')}")
             else:
                 st.session_state.criancas.append(data)
-                st.success(f"✅ {nome_completo} registado localmente!")
+                st.success(f"✅ {nome_completo} {t('registado_local')}")
             
             st.markdown(f"<h2 style='text-align:center;color:#1B5E20;'>👶 {nome_completo}</h2>", unsafe_allow_html=True)
+            
             col1, col2, col3 = st.columns(3)
+            
             with col1:
-                classe = "risk-high" if risco_anemia == "ALTO" else "risk-medium" if risco_anemia == "MEDIO" else "risk-low"
-                st.markdown(f'<div style="background:{classe};padding:15px;border-radius:12px;margin:10px 0;"><h4>🩸 Anemia</h4><h2>{risco_anemia}</h2><p>Score: {score_anemia}/100</p></div>', unsafe_allow_html=True)
+                if risco_anemia == "ALTO":
+                    classe = "risk-high"
+                elif risco_anemia == "MÉDIO":
+                    classe = "risk-medium"
+                else:
+                    classe = "risk-low"
+                st.markdown(f"""
+                <div class="{classe}">
+                    <h4>🩸 {t('anemia')}</h4>
+                    <h2>{t(risco_anemia.lower())}</h2>
+                    <p>{t('score')}: {score_anemia}/100</p>
+                    <p>{t('confianca')}: {conf_anemia*100:.1f}%</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
             with col2:
-                classe = "risk-high" if risco_fome == "ALTO" else "risk-medium" if risco_fome == "MEDIO" else "risk-low"
-                st.markdown(f'<div style="background:{classe};padding:15px;border-radius:12px;margin:10px 0;"><h4>🍽️ Fome Oculta</h4><h2>{risco_fome}</h2><p>Score: {score_fome}/100</p></div>', unsafe_allow_html=True)
+                if risco_fome == "ALTO":
+                    classe = "risk-high"
+                elif risco_fome == "MÉDIO":
+                    classe = "risk-medium"
+                else:
+                    classe = "risk-low"
+                st.markdown(f"""
+                <div class="{classe}">
+                    <h4>🍽️ {t('fome_oculta')}</h4>
+                    <h2>{t(risco_fome.lower())}</h2>
+                    <p>{t('score')}: {score_fome}/100</p>
+                    <p>{t('confianca')}: {conf_fome*100:.1f}%</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
             with col3:
-                classe = "risk-high" if risco_inseg == "ALTO" else "risk-medium" if risco_inseg == "MEDIO" else "risk-low"
-                st.markdown(f'<div style="background:{classe};padding:15px;border-radius:12px;margin:10px 0;"><h4>🏠 Insegurança Alimentar</h4><h2>{risco_inseg}</h2><p>Score: {score_inseg}/100</p></div>', unsafe_allow_html=True)
+                if risco_inseg == "ALTO":
+                    classe = "risk-high"
+                elif risco_inseg == "MÉDIO":
+                    classe = "risk-medium"
+                else:
+                    classe = "risk-low"
+                st.markdown(f"""
+                <div class="{classe}">
+                    <h4>🏠 {t('inseguranca_alimentar')}</h4>
+                    <h2>{t(risco_inseg.lower())}</h2>
+                    <p>{t('score')}: {score_inseg}/100</p>
+                    <p>{t('confianca')}: {conf_inseg*100:.1f}%</p>
+                </div>
+                """, unsafe_allow_html=True)
             
-            st.subheader("📋 Fatores de Risco")
-            if risco_anemia == "ALTO" or risco_fome == "ALTO" or risco_inseg == "ALTO":
-                st.warning("⚠️ Fatores Críticos:")
-                for f in fatores_anemia[:3]:
-                    st.write(f"- {f}")
-            else:
-                st.success("✅ Nenhum fator crítico detetado.")
+            st.markdown(f"### 📋 {t('fatores_risco')}")
             
-            st.subheader("💡 Recomendações")
+            for f in fatores_anemia:
+                st.markdown(f"🟡 {f}")
+            for f in fatores_fome:
+                if f not in fatores_anemia:
+                    st.markdown(f"🟠 {f}")
+            for f in fatores_inseg:
+                if f not in fatores_anemia and f not in fatores_fome:
+                    st.markdown(f"🔴 {f}")
+            
+            st.markdown(f"### 💡 {t('recomendacoes')}")
+            
             if risco_anemia == "ALTO":
-                st.error("🔴 Encaminhar para médico para suplementação de ferro")
-            elif risco_anemia == "MEDIO":
-                st.warning("🟠 Reforçar consumo de alimentos ricos em ferro")
-            else:
-                st.success("🟢 Manter alimentação equilibrada")
+                st.warning(f"🔴 {t('recomendacao_anemia_alto')}")
+                st.info(f"🥩 {t('recomendacao_anemia_alto_2')}")
+            elif risco_anemia == "MÉDIO":
+                st.info(f"🟠 {t('recomendacao_anemia_medio')}")
+                st.info(f"🍊 {t('recomendacao_anemia_medio_2')}")
             
-            if st.button("🔄 Novo Caso", use_container_width=True):
-                st.session_state.dados_basicos_salvos = False
-                st.session_state.nome_salvo = ""
-                st.session_state.data_salva = None
-                st.session_state.idade_calculada = 0
-                st.rerun()
+            if risco_fome == "ALTO":
+                st.warning(f"🔴 {t('recomendacao_fome_alto')}")
+                st.info(f"🥬 {t('recomendacao_fome_alto_2')}")
+            
+            if risco_inseg == "ALTO":
+                st.warning(f"🔴 {t('recomendacao_inseg_alto')}")
+                st.info(f"🏠 {t('recomendacao_inseg_alto_2')}")
+            
+            if risco_anemia == "BAIXO" and risco_fome == "BAIXO" and risco_inseg == "BAIXO":
+                st.success(f"✅ {t('recomendacao_ok')}")
+    # ============================================================
+    # BOTÃO NOVO CASO
+    # ============================================================
+    st.divider()
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🆕 Novo Caso", use_container_width=True):
+            st.session_state.dados_basicos_salvos = False
+            st.session_state.nome_salvo = ""
+            st.session_state.data_salva = None
+            st.session_state.idade_calculada = 0
+            st.rerun()
+
+if __name__ == "__main__":
+    render_enfermeiro()
